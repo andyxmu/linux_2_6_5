@@ -1,0 +1,156 @@
+/* Main structure */
+struct net_device  {
+}
+
+/* kernel init prepare work, for network stack */
+init/main.c 
+/* all init function can be found */
+start_kernel()
+	rest_init()
+		kernel_init()
+			do_basic_setup()
+				do_initcalls()
+					net_dev_init()  /*### reference to line 29*/
+					
+					
+/* Load network device driver, for example igb */
+static struct pci_driver igb_driver = {
+    .name     = igb_driver_name,
+    .id_table = igb_pci_tbl,
+    .probe    = igb_probe,
+    .remove   = __devexit_p(igb_remove),
+#ifdef CONFIG_PM
+    /* Power Managment Hooks */
+    .suspend  = igb_suspend,
+    .resume   = igb_resume,
+#endif
+    .shutdown = igb_shutdown,
+    .err_handler = &igb_err_handler
+};
+
+igb_init_module()
+	pci_register_driver(&igb_driver)
+		/* alloc net_device struct, initialization including igb_netdev_ops {igb_open ...}*/
+		igb_probe()
+
+/* use network device, by means of call of ifconfig or some other program */
+sock_ioctl()
+	dev_ioctl()
+		......
+			dev_open(net_device) /* for igb, it's igb_open() */ /*### reference to line 42 */
+
+igb_open()
+	igb_request_irq()
+		igb_alloc_q_vectors()
+			netif_napi_add()
+			
+
+module_init()
+	spawn_ksoftirqd()
+		cpu_callback(CPU_UP_PREPARE)
+			kthread_create(run_ksoftirqd,)
+		cpu_callback(CPU_ONLINE)
+			wake_up_process(ksoftirqd)
+				/*below function is a loop one, the entry function of thread*/
+				run_ksoftirqd()
+				
+				
+				
+				
+module_init()
+	net_dev_init()  /* init softnet_data structure */
+		/* below 2 functions register soft irq */
+		open_softirq(NET_TX_SOFTIRQ, net_tx_action)
+		open_softirq(NET_RX_SOFTIRQ, net_rx_action)
+		
+/* hardware interrupt handler for igb */
+igb_msix_ring()
+	napi_schedule()
+		__napi_schedule()
+			____napi_schedule()
+				/* add poll_list to softnet_data list */
+				list_add_tail(&napi->poll_list, &sd->poll_list)
+				/* flipping a bit in a bitfield, softirq pending bit is set so that the ksoftirqd process on this CPU knows that there are packets to process*/
+				__raise_softirq_irqoff(NET_RX_SOFTIRQ)
+				.........
+				run_ksoftirqd()
+					do_softirq()
+						__do_softirq()
+							/* below action func is registered in net_dev_init, open_softirq */
+							h->action() == net_rx_action()   /*### reference to line 82*/
+							
+net_rx_action()
+	n->poll: igb_poll()
+		igb_clean_rx_irq_adv()
+			igb_receive_skb()
+				/* held for GRO and the call chain end, or packets passed on to netif_receive_skb() to proceed up toward the protocol stacks */
+				napi_gro_receive()
+					napi_skb_finish(__napi_gro_receive)
+										dev_gro_receive()
+											napi_gro_complete()
+												netif_receive_skb()   
+												
+netif_receive_skb()
+	(RPS disabled)
+	__netif_receive_skb()
+		deliver_skb()
+			packet_type func   /*### For IP packet, see line 109*/
+	(RPS enabled)
+	enqueue_to_backlog() /* then remote CPU will process through ksoftirqd thread funcion */
+	
+	
+	
+/* Protocol Layer */
+ptype_base
+/* IP protocol register */
+inet_init()
+	ip_init()
+    static struct packet_type ip_packet_type __read_mostly = {
+    .type = cpu_to_be16(ETH_P_IP),
+    .func = ip_rcv,
+    .gso_send_check = inet_gso_send_check,
+    .gso_segment = inet_gso_segment,
+    .gro_receive = inet_gro_receive,
+    .gro_complete = inet_gro_complete,
+	};
+	dev_add_pack(&ip_packet_type);
+												
+
+ip_rcv()
+	/* by way of NF_INET_PRE_ROUTING netfilter */
+	/* do route table lookup, then decide pass on up, forward or drop */
+	ip_rcv_finish()
+		ip_route_input_noref()
+			ip_route_input_common()
+				/* route cache lookup rt_hash_table*/
+				skb_dst_set()
+				/* route table lookup */
+				ip_route_input_slow()
+					fib_lookup()
+		/* after route table lookup, we know:
+		   -- drop the packet, if needed
+		   -- input = ip_error(), if can't accept or forward 
+		   -- input = ip_local_deliver(), if to self, broadcast and muticast 
+		   -- input = ip_forward(), if forward needed */
+		dst_input()
+			skb_dst(skb)->input()
+			
+ip_local_deliver()
+	ip_defrag()
+	/* by way of NF_INET_LOCAL_IN netfilter */
+	ip_local_deliver_finish()
+			
+		
+													
+					
+
+
+
+
+
+
+
+
+
+
+				
